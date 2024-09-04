@@ -1,0 +1,25 @@
+# chat_completion_action.action
+
+# Goal definition (Request to the API)
+string model
+ChatMessage[] messages
+float32 temperature
+int32 max_tokens
+float32 top_p
+
+builtin_interfaces/Duration max_duration
+
+---
+# Result definition (API response)
+string info
+
+ChatMessage[] choices
+
+int32 prompt_tokens
+int32 completion_tokens
+int32 total_tokens
+
+
+---
+# Feedback definition (Progress updates)
+string status

@@ -3,7 +3,7 @@ import json
 from glob import glob
 
 import roslibpy
-from prompt import OpenAIInterface, append_service
+from prompt import OpenAIInterface, append_service, CortexInterface
 
 
 def args_factory() -> argparse.Namespace:
@@ -29,9 +29,13 @@ def main() -> None:
     for api_file in glob(f"{args.api}/*.json"):
         with open(api_file, "r") as f:
             api.append(json.load(f))
+    print("Services:")
+    # for srv in api:
+    #     print(srv)
 
     # configure your interface
-    interface = OpenAIInterface(api=api, key=args.key)
+    # interface = OpenAIInterface(api=api, key=args.key)
+    interface = CortexInterface(api=api)
 
     # create a ROS client
     ros_client = roslibpy.Ros(host=args.host, port=args.port)
@@ -46,7 +50,10 @@ def main() -> None:
             generated_api_calls = interface.prompt_to_api_calls(
                 prompt, model=args.model
             )
-            print("Done.")
+            print("API Calls:")
+            for call in generated_api_calls:
+                print(call)
+            # print(generated_api_calls)
 
             for call in generated_api_calls:
                 # get required service (in case they changed)
