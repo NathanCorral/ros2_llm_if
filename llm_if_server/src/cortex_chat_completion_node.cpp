@@ -4,6 +4,9 @@ namespace llm_if {
 CortexInterfaceNode::CortexInterfaceNode(const rclcpp::Node::SharedPtr node_ptr)
     : node_ptr_(node_ptr) {
   declare_parameters_();
+  if(try_connect_()) {
+      RCLCPP_INFO(node_ptr_->get_logger(), "Model Started.");
+  }
 
   // auto cb_group = node_ptr_->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
   // rclcpp::SubscriptionOptions options;
@@ -32,10 +35,90 @@ CortexInterfaceNode::CortexInterfaceNode(const rclcpp::Node::SharedPtr node_ptr)
   //     std::chrono::milliseconds(node_ptr_->get_parameter("carry_over_capacity").as_int()));
   // whisper_ = std::make_unique<Whisper>();
 
-  RCLCPP_INFO(node_ptr_->get_logger(), "Cortex Server Initialized.");
+
+  
+
+
+  RCLCPP_INFO(node_ptr_->get_logger(), "Cortex Server Initialized :=).");
 
 
   // initialize_whisper_();
+}
+
+bool CortexInterfaceNode::try_connect_() {
+  CURL* curl;
+  CURLcode res;
+  std::string url;
+  std::string jsonData;
+  std::string responseString;
+  bool ret = false;
+  struct curl_slist* headers = NULL;
+  std::string model_id = node_ptr_->get_parameter("model_id").as_string();
+
+  curl_global_init(CURL_GLOBAL_DEFAULT);
+  curl = curl_easy_init();
+  if(curl) {
+    // Define URL and headers
+    url = fmt::format("http://localhost:1337/v1/models/{}/start", model_id); 
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    // Create JSON payload
+    json payload = {
+        {"prompt_template", "<|system|>\n{system_message}\n<|user|>\n{prompt}\n<|assistant|>"},
+        {"stop", json::array()},
+        {"ngl", 4096},
+        {"ctx_len", 4096},
+        {"cpu_threads", 10},
+        {"n_batch", 2048},
+        {"caching_enabled", true},
+        {"grp_attn_n", 1},
+        {"grp_attn_w", 512},
+        {"mlock", false},
+        {"flash_attn", true},
+        {"cache_type", "f16"},
+        {"use_mmap", true},
+        {"engine", "cortex.llamacpp"}
+    };
+
+    jsonData = payload.dump(); // Serialize payload to string
+
+    // Set CURL options
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonData.c_str());
+
+    // Response handling
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseString);
+
+    // Perform the request
+    res = curl_easy_perform(curl);
+
+    if(res != CURLE_OK) {
+      std::string error_reason = fmt::format("Starting Model Failed, will retry: {}", curl_easy_strerror(res)); 
+      RCLCPP_WARN(node_ptr_->get_logger(), error_reason.c_str());
+    } else {
+      // HTTP status code
+      long httpCode(0);
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+
+      if (httpCode == 200) {
+        std::string response = fmt::format("Response Data: {}", responseString); 
+        RCLCPP_INFO(node_ptr_->get_logger(), response.c_str());
+        ret = true;
+      } else {
+        std::string response = fmt::format("Request failed with status code: {}", httpCode); 
+        RCLCPP_WARN(node_ptr_->get_logger(), response.c_str());
+      }
+    }
+
+    // Cleanup
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+  }
+
+  curl_global_cleanup();
+  return ret;
 }
 
 void CortexInterfaceNode::declare_parameters_() {
@@ -132,13 +215,13 @@ void CortexInterfaceNode::on_inference_accepted_(const std::shared_ptr<GoalHandl
 
 
   while (rclcpp::ok()) {
-    if (node_ptr_->now() - chat_completion_start_time_ > goal_handle->get_goal()->max_duration) {
-      result->info = "Inference timed out.";
-      RCLCPP_INFO(node_ptr_->get_logger(), result->info.c_str());
-      goal_handle->succeed(result);
-      // batched_buffer_->clear();
-      return;
-    }
+    // if (node_ptr_->now() - chat_completion_start_time_ > goal_handle->get_goal()->max_duration) {
+    //   result->info = "Inference timed out.";
+    //   RCLCPP_INFO(node_ptr_->get_logger(), result->info.c_str());
+    //   goal_handle->succeed(result);
+    //   // batched_buffer_->clear();
+    //   return;
+    // }
 
     if (goal_handle->is_canceling()) {
       result->info = "Inference cancelled.";

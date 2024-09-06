@@ -7,6 +7,10 @@
 #include <stdexcept>
 #include <string>
 
+#include <curl/curl.h>
+#include <nlohmann/json.hpp>
+#include <fmt/core.h>  // Include fmt  // c++20 to remove
+
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -18,10 +22,18 @@
 // #include "whisper_util/whisper.hpp"
 
 namespace llm_if {
+// Callback function to handle response data from libcurl
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* s) {
+    size_t totalSize = size * nmemb;
+    s->append(static_cast<char*>(contents), totalSize);
+    return totalSize;
+}
+
 class CortexInterfaceNode {
   using ChatCompletion = llm_if_idl::action::ChatCompletion;
   using GoalHandleChatCompletion = rclcpp_action::ServerGoalHandle<ChatCompletion>;
 
+  using json = nlohmann::json;
 public:
   CortexInterfaceNode(const rclcpp::Node::SharedPtr node_ptr);
 
@@ -47,6 +59,10 @@ protected:
   void on_inference_accepted_(const std::shared_ptr<GoalHandleChatCompletion> goal_handle);
   // std::string inference_(const std::vector<float> &);
   rclcpp::Time chat_completion_start_time_;
+
+  // Tools for connecting to cortex server
+  bool try_connect_();
+
 
   // llm_if data
   // std::unique_ptr<ModelManager> model_manager_;

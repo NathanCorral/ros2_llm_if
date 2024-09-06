@@ -1,5 +1,7 @@
 # chat_completion_action.action
 
+#builtin_interfaces/Duration max_duration
+
 # Goal definition (Request to the API)
 string model
 ChatMessage[] messages
@@ -7,7 +9,6 @@ float32 temperature
 int32 max_tokens
 float32 top_p
 
-builtin_interfaces/Duration max_duration
 
 ---
 # Result definition (API response)
