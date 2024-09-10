@@ -51,7 +51,7 @@ void CortexInterfaceNode::on_inference_accepted_(
   if (!modelLoaded(model_id)) {
     std::string start_model_resp;
     if (!startModel(model_id, start_model_resp)) {
-      result->info = "Loading model failed.";
+      result->info = fmt::format("Loading model failed:  {}", start_model_resp);
       RCLCPP_INFO(node_ptr_->get_logger(), result->info.c_str());
       goal_handle->succeed(result);
       return;
@@ -81,13 +81,25 @@ void CortexInterfaceNode::on_inference_accepted_(
     return;
   }
 
-  result->info = "Success";
-  goal_handle->succeed(result);
 
-  std::string info_msg = fmt::format("Chat History:  {}", chat_history.dump(4));
+  std::string info_msg = fmt::format("Chat History:  {}", chat_history.dump(2));
   RCLCPP_INFO(node_ptr_->get_logger(), info_msg.c_str());
-  info_msg = fmt::format("Response:  {}", chat_resp);
+  json resp = json::parse(chat_resp);
+  info_msg = fmt::format("Response:  {}", resp.dump(2));
   RCLCPP_INFO(node_ptr_->get_logger(), info_msg.c_str());
+
+  // Return the output  
+  result->info = "Success";
+  result->prompt_tokens = resp["usage"]["prompt_tokens"];
+  result->completion_tokens = resp["usage"]["completion_tokens"];
+  result->total_tokens = resp["usage"]["total_tokens"];
+  for (auto& choice : resp["choices"]) {
+    llm_if_idl::msg::ChatMessage c;
+    c.content = choice["message"]["content"];
+    c.role = choice["message"]["role"];
+    result->choices.push_back(c);
+  }
+  goal_handle->succeed(result);
   return;
 }
 
