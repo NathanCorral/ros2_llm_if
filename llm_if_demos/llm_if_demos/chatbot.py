@@ -1,36 +1,54 @@
+import json
+from glob import glob
+
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.task import Future
+from ament_index_python.packages import get_package_share_directory
 
 from llm_if_idl.action import ChatCompletion
 from llm_if_idl.msg import ChatMessage
 from llm_if_idl.action._chat_completion import ChatCompletion_FeedbackMessage
 
 
-from builtin_interfaces.msg import Duration
-from rclpy.action import ActionClient
-from rclpy.node import Node
-from rclpy.task import Future
 
-personalities = {
-    "robot": ChatMessage(role="system", \
-                    content="You are a professional assistant.\n\
-                    Reply only with the required information.\n\
-                    Do not interact with the user.\n\
-                    Do not explain things.\n\
-                    If there is something you do not know/understand/relate to as an AI,\
-                            simply respond with 'I dont know' or 'I can't assist with that'.\n\
-                    "),
-    "base": ChatMessage(role="system", \
-                    content="You are a helpful assistant.\n\
-                    "),
-}
+def get_personalities():
+    api_dir = get_package_share_directory('llm_if_demos')
+    api = []
+    for api_file in glob(f"{api_dir}/*.json"):
+        with open(api_file, "r") as f:
+            api.append(json.load(f))
+
+    personalities = {
+        "robot": ChatMessage(role="system", \
+                        content="You are a professional assistant.\n\
+                        Reply only with the required information.\n\
+                        Do not interact with the user.\n\
+                        Do not explain things.\n\
+                        If there is something you do not know/understand/relate to as an AI,\
+                                simply respond with 'I dont know' or 'I can't assist with that'.\n\
+                        "),
+        "base": ChatMessage(role="system", \
+                        content="You are a helpful assistant.\n\
+                        "),
+        "actor": ChatMessage(role="system", \
+                        content=f"\
+            Use this JSON schema to achieve the user's goals:\n\
+            {str(api)}\n\
+            Respond as a list of JSON objects.\n\
+            Replace the 'turtle_name' in the service field with the actual \
+            name of the turtle you want to control.\n\
+            Do not include explanations or conversation in the response.\n\
+            ",
+        ),
+    }
+    return personalities
 
 class ChatBot(Node):
-    sys_instruction = personalities["robot"]
-
-    def __init__(self, node_name: str) -> None:
+    def __init__(self, node_name: str, sys_instruction: str) -> None:
         super().__init__(node_name=node_name)
+        self.sys_instruction = sys_instruction
 
         # llm_if_server Chat Completion client
         self.cc_client = ActionClient(self, ChatCompletion, '/cortex_chat_completion')
@@ -43,8 +61,6 @@ class ChatBot(Node):
             f"Action server {self.cc_client._action_name} found."
         )
 
-        self.get_logger().info(self.info_string())
-
         self.chat_history = [self.sys_instruction]
 
         # Chat default settings
@@ -55,11 +71,17 @@ class ChatBot(Node):
 
         self.chat_completed_flag = True
 
+        self.get_logger().info(self.info_string())
+
     def chat(self) -> bool:
         """
         :return: Flag to continue the program (False == exit)
         """
-        prompt = input("> ")
+        try:
+            prompt = input("> ")
+        except EOFError:
+            self.get_logger().warn(f'--Caught [EOF], shutting down..')
+            return False
 
         # Handle special prompts
         if (prompt.lower() == "q"):
@@ -107,9 +129,10 @@ class ChatBot(Node):
         self.chat_history += [result.choices[0]]
         self.get_logger().info(f'{self.chat_history[-1].content}')
 
-
     def info_string(self) -> str:
         return (
+            "Chatbot created with System Instructions:\n\n"
+            f"{self.sys_instruction.content}\n"
             "\n\n"
             "\tStarting Chatbot demo.\n"
             "\tEnter '_clear' to clear chat history.\n"
@@ -118,7 +141,11 @@ class ChatBot(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    chatbot = ChatBot(node_name="chatbot")
+
+
+    personalities = get_personalities()
+    sys_instruction = personalities["actor"]
+    chatbot = ChatBot(node_name="chatbot", sys_instruction=sys_instruction)
     while rclpy.ok():
         if not chatbot.chat():
             break

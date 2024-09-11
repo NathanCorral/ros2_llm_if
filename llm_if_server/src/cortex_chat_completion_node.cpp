@@ -52,7 +52,7 @@ void CortexInterfaceNode::on_inference_accepted_(
     std::string start_model_resp;
     if (!startModel(model_id, start_model_resp)) {
       result->info = fmt::format("Loading model failed:  {}", start_model_resp);
-      RCLCPP_INFO(node_ptr_->get_logger(), result->info.c_str());
+      RCLCPP_WARN(node_ptr_->get_logger(), result->info.c_str());
       goal_handle->succeed(result);
       return;
     }
@@ -76,7 +76,7 @@ void CortexInterfaceNode::on_inference_accepted_(
 
   if (!ret) {
     result->info = fmt::format("Chat Completion failed:  {}", chat_resp);
-    RCLCPP_INFO(node_ptr_->get_logger(), result->info.c_str());
+    RCLCPP_WARN(node_ptr_->get_logger(), result->info.c_str());
     goal_handle->succeed(result);
     return;
   }
