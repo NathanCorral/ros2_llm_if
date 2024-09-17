@@ -4,7 +4,7 @@
     "properties": {
         "service": {
             "type": "string",
-            "default": "/turtle_name/teleport_absolute"
+            "default": "/$TURTLE_NAME/teleport_absolute"
         },
         "args": {
             "type": "object",

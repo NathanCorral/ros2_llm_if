@@ -6,11 +6,11 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.task import Future
 from ament_index_python.packages import get_package_share_directory
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from llm_if_idl.action import ChatCompletion
 from llm_if_idl.msg import ChatMessage
 from llm_if_idl.action._chat_completion import ChatCompletion_FeedbackMessage
-
 
 
 def get_personalities():
@@ -48,10 +48,15 @@ def get_personalities():
 class ChatBot(Node):
     def __init__(self, node_name: str, sys_instruction: str) -> None:
         super().__init__(node_name=node_name)
-        self.sys_instruction = sys_instruction
+        if isinstance(sys_instruction, list):
+            self.sys_instruction = sys_instruction
+        else:
+            self.sys_instruction = [sys_instruction]
+        self.clear()
 
         # llm_if_server Chat Completion client
-        self.cc_client = ActionClient(self, ChatCompletion, '/cortex_chat_completion')
+        group = MutuallyExclusiveCallbackGroup()
+        self.cc_client = ActionClient(self, ChatCompletion, '/cortex_chat_completion', callback_group=group)
 
         while not self.cc_client.wait_for_server(1):
             self.get_logger().warn(
@@ -61,17 +66,54 @@ class ChatBot(Node):
             f"Action server {self.cc_client._action_name} found."
         )
 
-        self.chat_history = [self.sys_instruction]
-
         # Chat default settings
         self.model = "phi3:mini-gguf"
+        self.model = "phi3"
         self.temperature = 0.8
         self.max_tokens = 2048
         self.top_p = 0.95
 
         self.chat_completed_flag = True
+        self.last_result = None
 
-        self.get_logger().info(self.info_string())
+    def clear(self):
+        """
+        Clear the chat history
+        """
+        self.chat_history = self.sys_instruction
+
+    def __call__(self, prompt):
+        """
+        Interface with the action server.
+        Return when the result is complete
+        :parameter prompt:  user prompt for the LLM
+        :return: (success: bool, error_msg: str, response: str)
+        """
+        success = False
+        resp = None
+        error_msg = ""
+        if not self.chat_completed_flag:
+            return success, "Current chat in progress", resp
+        self.chat_completed_flag = False
+
+        self.start_cc(prompt)
+        """
+        I would like to use
+            rclpy.spin_until_future_complete(self, future)
+        but it blocks even after call is completed.
+        """
+        while rclpy.ok() and not self.chat_completed_flag:
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+        if self.last_result.info.lower() != "success":
+            error_msg = last_result.info
+        else:
+            resp = self.chat_history[-1].content
+            # Remove <|end|>
+            resp = resp.split("<|end|>")[0]
+            success = True
+
+        return success, error_msg, resp            
 
     def chat(self) -> bool:
         """
@@ -87,7 +129,7 @@ class ChatBot(Node):
         if (prompt.lower() == "q"):
             return False
         elif (prompt.lower() == "_clear"):
-            self.chat_history = [self.sys_instruction]
+            self.clear()
             return self.chat() # re-run prompt
 
         self.chat_completed_flag = False
@@ -106,9 +148,13 @@ class ChatBot(Node):
 
         future = self.cc_client.send_goal_async(goal, feedback_callback=self.on_feedback)
         future.add_done_callback(self.on_goal_accepted)
+        return future
 
     def on_feedback(self, feedback_msg: ChatCompletion_FeedbackMessage) -> None:
-        print(f"{feedback_msg.feedback.status}", end="")
+        """
+        todo
+        """
+        self.get_logger().info(f"{feedback_msg.feedback.status}")
 
     def on_goal_accepted(self, future: Future) -> None:
         goal_handle = future.result()
@@ -121,18 +167,25 @@ class ChatBot(Node):
     def on_done(self, future: Future) -> None:
         result: ChatCompletion.Result = future.result().result
         self.chat_completed_flag = True
+        self.last_result = result
 
         if result.info.lower() != "success":
             self.get_logger().warn(f'Failed interface with error:  {result.info}')
             return
 
         self.chat_history += [result.choices[0]]
+        # self.get_logger().info(f'{self.chat_history[-1].content}')
+
+    def print_last_result(self):
+        if self.last_result.info.lower() != "success":
+            return
         self.get_logger().info(f'{self.chat_history[-1].content}')
 
     def info_string(self) -> str:
+        inst = [f"{x.content}\n" for x in self.sys_instruction]
         return (
             "Chatbot created with System Instructions:\n\n"
-            f"{self.sys_instruction.content}\n"
+            f"{inst}\n"
             "\n\n"
             "\tStarting Chatbot demo.\n"
             "\tEnter '_clear' to clear chat history.\n"
@@ -142,16 +195,19 @@ class ChatBot(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-
     personalities = get_personalities()
-    sys_instruction = personalities["actor"]
+    sys_instruction = personalities["robot"]
     chatbot = ChatBot(node_name="chatbot", sys_instruction=sys_instruction)
+    chatbot.get_logger().info(chatbot.info_string())
     while rclpy.ok():
         if not chatbot.chat():
             break
 
         while rclpy.ok() and not chatbot.chat_completed_flag:
             rclpy.spin_once(chatbot, timeout_sec=0.1)
+        
+        chatbot.print_last_result()
+
     chatbot.destroy_node()
     rclpy.shutdown()
 

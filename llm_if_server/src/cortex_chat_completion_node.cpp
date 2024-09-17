@@ -90,21 +90,29 @@ void CortexInterfaceNode::on_inference_accepted_(
 
   // Return the output  
   result->info = "Success";
-  result->prompt_tokens = resp["usage"]["prompt_tokens"];
-  result->completion_tokens = resp["usage"]["completion_tokens"];
-  result->total_tokens = resp["usage"]["total_tokens"];
-  for (auto& choice : resp["choices"]) {
-    llm_if_idl::msg::ChatMessage c;
-    c.content = choice["message"]["content"];
-    c.role = choice["message"]["role"];
-    result->choices.push_back(c);
-  }
+  // result->prompt_tokens = resp["usage"]["prompt_tokens"];
+  // result->completion_tokens = resp["usage"]["completion_tokens"];
+  // result->total_tokens = resp["usage"]["total_tokens"];
+  // for (auto& choice : resp["choices"]) {
+  //   llm_if_idl::msg::ChatMessage c;
+  //   c.content = choice["message"]["content"];
+  //   c.role = choice["message"]["role"];
+  //   result->choices.push_back(c);
+  // }
+  llm_if_idl::msg::ChatMessage c;
+  c.content = resp["message"]["content"];
+  c.role = resp["message"]["role"];
+  result->choices.push_back(c);
+
+
+
   goal_handle->succeed(result);
   return;
 }
 
 bool CortexInterfaceNode::startModel(const std::string& model_id, std::string& response)
 {
+  return true;
   std::string url = fmt::format("http://localhost:1337/v1/models/{}/start", model_id); 
   json payload = {
       {"prompt_template", "<|system|>\n{system_message}\n<|user|>\n{prompt}\n<|assistant|>"},
@@ -153,7 +161,20 @@ bool CortexInterfaceNode::chatCompletion(const std::string& model_id, const json
                     const int& max_tokens, const float& top_p
                     )
 {
-  std::string url = "http://localhost:1337/v1/chat/completions"; 
+  // std::string url = "http://localhost:1337/v1/chat/completions"; 
+  // json payload = {
+  //       {"messages", chat_history},
+  //       {"model", model_id},
+  //       {"stream", stream},
+  //       {"max_tokens", max_tokens},
+  //       {"stop", {"End"}},
+  //       {"frequency_penalty", 0.2},
+  //       {"presence_penalty", 0.6},
+  //       {"temperature", temperature},
+  //       {"top_p", top_p}
+  //   };
+
+  std::string url = "http://localhost:11434/api/chat"; 
   json payload = {
         {"messages", chat_history},
         {"model", model_id},

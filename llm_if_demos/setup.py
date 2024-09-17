@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'turtlebot = llm_if_demos.turtlebot_llm_controller:main',
             'chatbot = llm_if_demos.chatbot:main',
+            'state_turtlebot = llm_if_demos.turtlebot_simulator_state:main',
         ],
     },
 )
